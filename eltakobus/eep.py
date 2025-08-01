@@ -189,75 +189,78 @@ class F6_10_00(_WindowHandle):
     """Windows handle"""
     
 
-# ======================================
-# MARK: - Window handle Ext
-# ======================================
+# =======================================
+# MARK: - Window handle WithSupplyVoltage
+# =======================================
 
-class WindowHandleExtPosition(int, Enum):
+class WindowHandleWithSupplyVoltagePosition(int, Enum):
     CLOSED = 0
     OPEN = 1
     TILT = 2
 
     @classmethod
-    def get_position(cls, movement:int):
-        # left  to down 0b1111
-        # right to down 0b1111
-        if movement == 0xF: 
-            return WindowHandlePosition.CLOSED
-        # up to left    0b11X0
-        # down to left  0b11X0
-        # up to right   0b11X0
-        # down to right 0b11X0
-        elif movement == 0xC or movement == 0xE:
-            return WindowHandlePosition.OPEN
-        # right to up 0b1101
-        # left to up  0b1101
-        elif movement == 0xD:
-            return WindowHandlePosition.TILT
-        
-        raise Exception(f"Movement data ({movement}) not handled")
+    def get_position(cls, handle_status:int):
+        # Enum:
+        # 0b000: Closed
+        # 0b010: Tilt
+        # 0b100: Reserved
+        # 0b110: Open
+        if handle_status == 0x0:
+            return WindowHandleWithSupplyVoltagePosition.CLOSED
+        elif handle_status == 0x2:
+            return WindowHandleWithSupplyVoltagePosition.TILT
+        elif handle_status == 0x6:
+            return WindowHandleWithSupplyVoltagePosition.OPEN
+                
+        raise Exception(f"Handle-status data ({handle_status}) not handled")
 
-class _WindowHandleExt(EEP):
+class _WindowHandleWithSupplyVoltage(EEP):
+    volt_min = 0.0
+    volt_max = 5.0
 
     @classmethod
     def decode_message(cls, msg):
         if msg.org != 0x07:
             raise WrongOrgError
         
-        battery_status = msg.data[0]
-        movement       = msg.data[3]
+        supply_voltage = cls.volt_min + ((msg.data[0] / 250.0) * (cls.volt_max - cls.volt_min))
+        handle_status = msg.data[3]
         
-        handle_position = WindowHandleExtPosition.get_position(movement >> 4)
+        # DB02..DB0.1 signify the actual handle status, DB0.0 is unused (=0), so set DB0.7..DB0.3 to zero
+        bit_mask = 0b00000111
+        handle_position = WindowHandleWithSupplyVoltagePosition.get_position(handle_status & bit_mask)
 
-        return cls(movement, handle_position)
+        return cls(supply_voltage, handle_status, handle_position)
 
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         
-        # TODO: fill data
-        #data[0] =
-        #data[1] =
-        #data[2] =
-        #data[3] =
+        data[0] = int(((self.supply_voltage - self.volt_min) / (self.volt_max - self.volt_min)) * 250.0)
+        data[3] = self.handle_status
 
         status = 0x00
         
         return Regular4BSMessage(address, status, data, True)
 
     @property
-    def movement(self):
-        return self._movement
+    def supply_voltage(self):
+        return self._supply_voltage
+
+    @property
+    def handle_status(self):
+        return self._handle_status
     
     @property
     def handle_position(self):
         return self._handle_position
 
-    def __init__(self, movement:int=0, handle_position:WindowHandlePosition=WindowHandlePosition.CLOSED):
-        self._movement = movement
+    def __init__(self, supply_voltage:int=0, handle_status:int=0, handle_position:WindowHandleWithSupplyVoltagetPosition=WindowHandleWithSupplyVoltagePosition.CLOSED):
+        self._supply_voltage = supply_voltage
+        self._handle_status = handle_status
         self._handle_position = handle_position
 
-class A5_14_09(_WindowHandleExt):
-    """Windows handle"""
+class A5_14_09(_WindowHandleWithSupplyVoltage):
+    """Window handle"""
     
 # ======================================
 # MARK: - Single input contact
@@ -1493,9 +1496,9 @@ class _DigitalInputAndBattery(EEP):
         data = bytearray([0, 0, 0, 0])
         
         data[0] = 0
-        data[1] = 0
-        data[2] = 0
-        data[3] = 0
+        data[1] = self.battery_status
+        data[2] = self.contact_status
+        data[3] = self.learn_button
 
         status = 0x00
         
