@@ -188,6 +188,77 @@ class _WindowHandle(EEP):
 class F6_10_00(_WindowHandle):
     """Windows handle"""
     
+
+# ======================================
+# MARK: - Window handle Ext
+# ======================================
+
+class WindowHandleExtPosition(int, Enum):
+    CLOSED = 0
+    OPEN = 1
+    TILT = 2
+
+    @classmethod
+    def get_position(cls, movement:int):
+        # left  to down 0b1111
+        # right to down 0b1111
+        if movement == 0xF: 
+            return WindowHandlePosition.CLOSED
+        # up to left    0b11X0
+        # down to left  0b11X0
+        # up to right   0b11X0
+        # down to right 0b11X0
+        elif movement == 0xC or movement == 0xE:
+            return WindowHandlePosition.OPEN
+        # right to up 0b1101
+        # left to up  0b1101
+        elif movement == 0xD:
+            return WindowHandlePosition.TILT
+        
+        raise Exception(f"Movement data ({movement}) not handled")
+
+class _WindowHandleExt(EEP):
+
+    @classmethod
+    def decode_message(cls, msg):
+        if msg.org != 0x07:
+            raise WrongOrgError
+        
+        battery_status = msg.data[0]
+        movement       = msg.data[3]
+        
+        handle_position = WindowHandleExtPosition.get_position(movement >> 4)
+
+        return cls(movement, handle_position)
+
+    def encode_message(self, address):
+        data = bytearray([0, 0, 0, 0])
+        
+        # TODO: fill data
+        #data[0] =
+        #data[1] =
+        #data[2] =
+        #data[3] =
+
+        status = 0x00
+        
+        return Regular4BSMessage(address, status, data, True)
+
+    @property
+    def movement(self):
+        return self._movement
+    
+    @property
+    def handle_position(self):
+        return self._handle_position
+
+    def __init__(self, movement:int=0, handle_position:WindowHandlePosition=WindowHandlePosition.CLOSED):
+        self._movement = movement
+        self._handle_position = handle_position
+
+class A5_14_09(_WindowHandleExt):
+    """Windows handle"""
+    
 # ======================================
 # MARK: - Single input contact
 # ======================================
@@ -1422,9 +1493,9 @@ class _DigitalInputAndBattery(EEP):
         data = bytearray([0, 0, 0, 0])
         
         data[0] = 0
-        data[1] = self.battery_status
-        data[2] = self.contact_status
-        data[3] = self.learn_button
+        data[1] = 0
+        data[2] = 0
+        data[3] = 0
 
         status = 0x00
         
