@@ -189,9 +189,9 @@ class F6_10_00(_WindowHandle):
     """Windows handle"""
     
 
-# =======================================
-# MARK: - Window handle WithSupplyVoltage
-# =======================================
+# =========================================
+# MARK: - Window handle with supply voltage
+# =========================================
 
 class WindowHandleWithSupplyVoltagePosition(int, Enum):
     CLOSED = 0
@@ -203,7 +203,7 @@ class WindowHandleWithSupplyVoltagePosition(int, Enum):
         # Enum:
         # 0b000: Closed
         # 0b010: Tilt
-        # 0b100: Reserved
+        # 0b100: Reserved (?)
         # 0b110: Open
         if handle_status == 0x0:
             return WindowHandleWithSupplyVoltagePosition.CLOSED
@@ -217,13 +217,14 @@ class WindowHandleWithSupplyVoltagePosition(int, Enum):
 class _WindowHandleWithSupplyVoltage(EEP):
     volt_min = 0.0
     volt_max = 5.0
+    valid_range = 250.0
 
     @classmethod
     def decode_message(cls, msg):
         if msg.org != 0x07:
             raise WrongOrgError
         
-        supply_voltage = cls.volt_min + ((msg.data[0] / 250.0) * (cls.volt_max - cls.volt_min))
+        supply_voltage = cls.volt_min + ((msg.data[0] / cls.valid_range) * (cls.volt_max - cls.volt_min))
         handle_status = msg.data[3]
         
         # DB02..DB0.1 signify the actual handle status, DB0.0 is unused (=0), so set DB0.7..DB0.3 to zero
@@ -235,7 +236,7 @@ class _WindowHandleWithSupplyVoltage(EEP):
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         
-        data[0] = int(((self.supply_voltage - self.volt_min) / (self.volt_max - self.volt_min)) * 250.0)
+        data[0] = int(((self.supply_voltage - self.volt_min) / (self.volt_max - self.volt_min)) * self.valid_range)
         data[3] = self.handle_status
 
         status = 0x00
@@ -254,7 +255,7 @@ class _WindowHandleWithSupplyVoltage(EEP):
     def handle_position(self):
         return self._handle_position
 
-    def __init__(self, supply_voltage:int=0, handle_status:int=0, handle_position:WindowHandleWithSupplyVoltagetPosition=WindowHandleWithSupplyVoltagePosition.CLOSED):
+    def __init__(self, supply_voltage:int=0, handle_status:int=0, handle_position:WindowHandleWithSupplyVoltagePosition=WindowHandleWithSupplyVoltagePosition.CLOSED):
         self._supply_voltage = supply_voltage
         self._handle_status = handle_status
         self._handle_position = handle_position
