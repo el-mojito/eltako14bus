@@ -1250,16 +1250,33 @@ class _EltakoShutterCommand(EEP):
         if msg.org != 0x07:
             raise WrongOrgError
         
-        time = msg.data[1]
+        send_time_in_seconds = not (msg.data[3] & 0x02)  # DB0.1 == 1 indicates that time is sent in 100ms units, DB0.1 == 0 indicates that time is sent in seconds
+        if send_time_in_seconds:
+            time = msg.data[1]
+        else:
+            time = msg.data[0] << 8 | msg.data[1]
         command = msg.data[2]
         learn_button = (msg.data[3] & 0x08) >> 3
 
-        return cls(time, command, learn_button)
+        return cls(time, command, learn_button, send_time_in_seconds)
 
     def encode_message(self, address):
         data = bytearray([0, 0, 0, 0])
         
-        data[1] = self.time
+        if self.send_time_in_seconds:
+            if not isinstance(self.time, int):
+                raise ValueError(f"Cover drive time must be an integer when send_time_in_seconds is True: {self.time} s")
+            if not (1 <= self.time <= 255):
+                raise ValueError(f"Cover drive time out of valid range (1-255 s): {self.time} s")
+            data[1] = self.time
+        else:
+            time_100ms = round(self.time * 10) # convert to 100ms-units
+            if not (0 <= time_100ms <= 0xFFFF):
+                raise ValueError(f"Cover drive time out of valid range (0-6553.5 s): {self.time} s")
+            data[0] = (time_100ms >> 8) & 0xFF  # uper 8 Bits
+            data[1] = time_100ms & 0xFF         # lower 8 Bits
+            data[3] = 0x02                      # set Dataflag for time in 100ms units
+
         data[2] = self.command
         data[3] = data[3] | (self.learn_button << 3)
 
@@ -1278,11 +1295,16 @@ class _EltakoShutterCommand(EEP):
     @property
     def learn_button(self):
         return self._learn_button
+    
+    @property
+    def send_time_in_seconds(self):
+        return self._send_time_in_seconds
 
-    def __init__(self, time, command, learn_button):
+    def __init__(self, time, command, learn_button, send_time_in_seconds=True):
         self._time = time
         self._command = command
         self._learn_button = learn_button
+        self._send_time_in_seconds = send_time_in_seconds
 
 class H5_3F_7F(_EltakoShutterCommand):
     """Eltako Shutter Command"""
